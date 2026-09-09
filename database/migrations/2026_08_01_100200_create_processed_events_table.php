@@ -14,7 +14,7 @@ return new class extends Migration
             $table->string('event_id');
             $table->timestamps();
 
-            $table->index(['tenant_id', 'event_id']);
+            $table->unique(['tenant_id', 'event_id']);
         });
     }
 

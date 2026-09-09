@@ -16,7 +16,7 @@ return new class extends Migration
             $table->timestamp('suppressed_at')->nullable();
             $table->timestamps();
 
-            $table->unique('email');
+            $table->unique(['tenant_id', 'email']);
         });
     }
 
