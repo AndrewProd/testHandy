@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s
+  external_labels:
+    monitor: nats-surveyor
+
+scrape_configs:
+  - job_name: nats-surveyor
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['nats-surveyor:7777']

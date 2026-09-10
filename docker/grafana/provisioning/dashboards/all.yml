@@ -1,0 +1,22 @@
+apiVersion: 1
+
+providers:
+  - name: nats-surveyor
+    orgId: 1
+    folder: NATS
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
+
+  - name: reply-pipeline
+    orgId: 1
+    folder: Reply Pipeline
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards-app
+      foldersFromFilesStructure: false

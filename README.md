@@ -15,13 +15,45 @@ make up
 ## Команды
 
 ```bash
-make test      # прогнать тесты
-make migrate   # пересоздать БД и засеять заново
+make test      # прогнать тесты (отдельная база reply_center_test, dev-данные не трогаются)
+make migrate   # пересоздать dev-БД и засеять заново
 make shell     # bash внутри контейнера приложения
 make down      # остановить и удалить тома
 ```
 
-Postgres доступен снаружи на `localhost:55432` (`app` / `secret`, база `reply_center`) — если удобнее смотреть данные своим клиентом.
+Postgres доступен снаружи на `localhost:55432` (`app` / `secret`, база `reply_center`) — если удобнее смотреть данные своим клиентом. Тесты идут в `reply_center_test`, так что `make test` больше не стирает демо-данные.
+
+### Шина NATS (сверх задания)
+
+`make up` поднимает также NATS с JetStream, воркеры `relay` / `consumer`, страницу
+для ручных тестов и стек NATS Surveyor → Prometheus → Grafana. Подробно —
+[docs/NATS.md](docs/NATS.md).
+
+**Тестовая страница: http://localhost:8000** — форма публикует событие
+`reply.received` в NATS; ниже лента джоб: по каждой видно **сырой payload,
+с которым джоба летела**, и что она сделала (задача, sentiment, статус, шина).
+
+```bash
+make bus-demo         # publish fixture → consume → relay → consume events (по одному разу)
+make surveyor         # печатает все ссылки (harness :8000, Grafana :3000, ...)
+```
+
+На тесты это не влияет — они по-прежнему целиком на Postgres.
+
+### Дашборд-фронт (`front/`)
+
+Vue 3 + Vite + **PrimeVue 3** (светлая тема `aura-light-blue`), без авторизации
+и лицензии, на моковых данных — прототип консоли Remarketing / Reply Center.
+Весь UI на компонентах PrimeVue.
+Разделы: Reply Center, Drip Campaigns, Flow Handoff, Conversion Analytics,
+AI (Classification Metrics + Prompt Management), Event History,
+Suppression & Blacklist, Integrations, Field Teams, NATS Test Harness, Settings.
+
+```bash
+cd front && npm install && npm run dev   # http://localhost:5173
+```
+
+Подробно — [front/README.md](front/README.md).
 
 ## Что где лежит
 

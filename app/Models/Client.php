@@ -27,10 +27,18 @@ class Client extends Model
         'email',
         'name',
         'suppressed_at',
+        'address',
+        'city',
+        'region',
+        'postal_code',
+        'latitude',
+        'longitude',
     ];
 
     protected $casts = [
         'suppressed_at' => 'datetime',
+        'latitude' => 'float',
+        'longitude' => 'float',
     ];
 
     public function enrollments()

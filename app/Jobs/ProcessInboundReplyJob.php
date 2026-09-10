@@ -3,11 +3,17 @@
 namespace App\Jobs;
 
 use App\Contracts\SentimentClassifier;
-use App\Exceptions\ClassifierTimeoutException;
+use App\Domain\Conversations\Enums\MessageDirection;
+use App\Domain\Conversations\Enums\MessageSenderType;
+use App\Domain\Conversations\Models\ConversationMessage;
+use App\Domain\ReplyIntake\Data\ReplyAnalysis;
+use App\Domain\ReplyIntake\Services\IntentRouter;
+use App\Domain\ReplyIntake\Services\ReplyAnalyzer;
 use App\Models\CampaignEnrollment;
 use App\Models\Client;
 use App\Models\ReplyTask;
 use App\Support\IdempotencyGuard;
+use App\Support\Outbox;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -21,15 +27,6 @@ class ProcessInboundReplyJob implements ShouldQueue
 
     public int $tries = 3;
 
-    private const LABELS = [
-        'interested',
-        'question',
-        'not_now',
-        'unsubscribe',
-        'wrong_person',
-        'auto_reply',
-    ];
-
     /**
      * @param array $payload decoded reply.received event
      */
@@ -37,8 +34,13 @@ class ProcessInboundReplyJob implements ShouldQueue
         public array $payload,
     ) {}
 
-    public function handle(SentimentClassifier $classifier, IdempotencyGuard $guard): void
-    {
+    public function handle(
+        SentimentClassifier $classifier,
+        IdempotencyGuard $guard,
+        Outbox $outbox,
+        ReplyAnalyzer $analyzer,
+        IntentRouter $router,
+    ): void {
         $tenantId = (int) ($this->payload['tenant_id'] ?? 0);
         $eventId  = (string) ($this->payload['event_id'] ?? '');
 
@@ -46,7 +48,7 @@ class ProcessInboundReplyJob implements ShouldQueue
             return;
         }
 
-        DB::transaction(function () use ($classifier, $guard, $tenantId, $eventId) {
+        DB::transaction(function () use ($classifier, $guard, $outbox, $analyzer, $router, $tenantId, $eventId) {
             if (!$guard->claim($tenantId, $eventId)) {
                 return;
             }
@@ -57,25 +59,54 @@ class ProcessInboundReplyJob implements ShouldQueue
                 return;
             }
 
-            $body      = $this->resolveBody($this->payload);
-            $sentiment = $this->resolveSentiment($classifier, $body);
+            $analysis = $analyzer->analyze($this->payload, $classifier);
+            $campaignId = CampaignEnrollment::query()
+                ->where('tenant_id', $tenantId)
+                ->where('client_id', $client->id)
+                ->value('campaign_id');
 
             $created = ReplyTask::query()->insertOrIgnore([
-                'tenant_id'  => $tenantId,
-                'client_id'  => $client->id,
-                'event_id'   => $eventId,
-                'sentiment'  => $sentiment,
-                'body'       => $body,
-                'status'     => 'open',
-                'created_at' => now(),
-                'updated_at' => now(),
+                'tenant_id'   => $tenantId,
+                'client_id'   => $client->id,
+                'event_id'    => $eventId,
+                'sentiment'   => $analysis->sentiment,
+                'intent'      => $analysis->intent?->value,
+                'confidence'  => $analysis->confidence,
+                'body'        => $analysis->body,
+                'status'      => 'open',
+                'campaign_id' => $campaignId,
+                'created_at'  => now(),
+                'updated_at'  => now(),
             ]);
 
             if ($created === 0) {
                 return;
             }
 
-            $this->applyCampaignEffects($tenantId, $client, $sentiment);
+            $effects = $this->applyCampaignEffects($tenantId, $client, $analysis->sentiment);
+
+            $task = ReplyTask::query()
+                ->where('tenant_id', $tenantId)
+                ->where('event_id', $eventId)
+                ->first();
+
+            $this->recordInbound($task, $analysis, $eventId);
+
+            $routing = $router->route($task, $analysis, $client);
+
+            $outbox->emit($tenantId, 'events.reply.processed', [
+                'event_id'                  => $eventId,
+                'tenant_id'                 => $tenantId,
+                'client_id'                 => $client->id,
+                'reply_task_id'             => $task->id,
+                'sentiment'                 => $analysis->sentiment,
+                'intent'                    => $analysis->intent?->value,
+                'confidence'                => $analysis->confidence,
+                'field_service_request_id'  => $routing['field_service_request']?->id,
+                'campaign_stopped'          => $effects['campaign_stopped'],
+                'client_suppressed'         => $effects['client_suppressed'],
+                'occurred_at'               => now()->toIso8601String(),
+            ], $eventId);
         });
     }
 
@@ -108,114 +139,16 @@ class ProcessInboundReplyJob implements ShouldQueue
         return $recipient !== '' && $email === $recipient;
     }
 
-    private function resolveBody(array $payload): string
-    {
-        $plain = trim((string) ($payload['body_plain'] ?? ''));
-
-        if ($plain !== '') {
-            return $plain;
-        }
-
-        $html = (string) ($payload['body_html'] ?? '');
-
-        if ($html === '') {
-            return '';
-        }
-
-        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
-
-        return trim($text);
-    }
-
-    private function resolveSentiment(SentimentClassifier $classifier, string $body): ?string
-    {
-        if ($this->isAutoReply()) {
-            return 'auto_reply';
-        }
-
-        if ($this->looksLikeUnsubscribe($body)) {
-            return 'unsubscribe';
-        }
-
-        return $this->classify($classifier, $body);
-    }
-
-    private function isAutoReply(): bool
-    {
-        $headers = [];
-
-        foreach (($this->payload['headers'] ?? []) as $key => $value) {
-            $headers[strtolower((string) $key)] = strtolower(trim((string) $value));
-        }
-
-        $autoSubmitted = $headers['auto-submitted'] ?? null;
-
-        if ($autoSubmitted !== null && $autoSubmitted !== 'no') {
-            return true;
-        }
-
-        if (array_key_exists('x-auto-response-suppress', $headers)) {
-            return true;
-        }
-
-        if (in_array($headers['x-autoreply'] ?? null, ['yes', 'true', '1'], true)) {
-            return true;
-        }
-
-        return in_array($headers['precedence'] ?? null, ['bulk', 'auto', 'junk'], true);
-    }
-
-    private function looksLikeUnsubscribe(string $body): bool
-    {
-        $text = mb_strtolower($body);
-
-        foreach (['unsubscribe', 'take me off', 'stop emailing', 'remove me', 'opt out'] as $needle) {
-            if (str_contains($text, $needle)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function classify(SentimentClassifier $classifier, string $body): ?string
-    {
-        try {
-            $raw = $classifier->classify($body);
-        } catch (ClassifierTimeoutException) {
-            return null;
-        }
-
-        return $this->parseLabel($raw);
-    }
-
-    private function parseLabel(string $raw): ?string
-    {
-        $raw = trim($raw);
-
-        if (preg_match('/^```(?:json)?\s*(.*)$/is', $raw, $matches) === 1) {
-            $raw = trim($matches[1], " \n\r\t`");
-        }
-
-        $decoded = json_decode($raw, true);
-
-        if (!is_array($decoded) || !isset($decoded['sentiment']) || !is_string($decoded['sentiment'])) {
-            return null;
-        }
-
-        $label = strtolower(trim($decoded['sentiment']));
-
-        return in_array($label, self::LABELS, true) ? $label : null;
-    }
-
-    private function applyCampaignEffects(int $tenantId, Client $client, ?string $sentiment): void
+    /**
+     * @return array{campaign_stopped: bool, client_suppressed: bool}
+     */
+    private function applyCampaignEffects(int $tenantId, Client $client, ?string $sentiment): array
     {
         if ($sentiment === 'auto_reply') {
-            return;
+            return ['campaign_stopped' => false, 'client_suppressed' => false];
         }
 
-        CampaignEnrollment::query()
+        $stopped = CampaignEnrollment::query()
             ->where('tenant_id', $tenantId)
             ->where('client_id', $client->id)
             ->where('status', 'active')
@@ -224,8 +157,53 @@ class ProcessInboundReplyJob implements ShouldQueue
                 'next_send_at' => null,
             ]);
 
+        $suppressed = false;
+
         if (in_array($sentiment, ['unsubscribe', 'wrong_person'], true) && $client->suppressed_at === null) {
             $client->forceFill(['suppressed_at' => now()])->save();
+            $suppressed = true;
+        }
+
+        return [
+            'campaign_stopped'  => $stopped > 0,
+            'client_suppressed' => $suppressed,
+        ];
+    }
+
+    private function recordInbound(ReplyTask $task, ReplyAnalysis $analysis, string $eventId): void
+    {
+        ConversationMessage::query()->create([
+            'tenant_id' => $task->tenant_id,
+            'reply_task_id' => $task->id,
+            'sender_type' => MessageSenderType::Customer,
+            'sender_id' => $task->client_id,
+            'direction' => MessageDirection::Inbound,
+            'channel' => 'email',
+            'body' => $analysis->body,
+            'ai_generated' => false,
+            'external_message_id' => $eventId,
+        ]);
+
+        if ($analysis->intent !== null || $analysis->sentiment !== null) {
+            ConversationMessage::query()->create([
+                'tenant_id' => $task->tenant_id,
+                'reply_task_id' => $task->id,
+                'sender_type' => MessageSenderType::Ai,
+                'direction' => MessageDirection::Internal,
+                'channel' => 'email',
+                'body' => sprintf(
+                    'Intent %s · sentiment %s · confidence %s. Copilot only — a manager must send the customer reply.',
+                    $analysis->intent?->value ?? 'unknown',
+                    $analysis->sentiment ?? 'unclassified',
+                    $analysis->confidence !== null ? number_format($analysis->confidence, 2) : 'n/a',
+                ),
+                'ai_generated' => true,
+                'metadata' => [
+                    'intent' => $analysis->intent?->value,
+                    'sentiment' => $analysis->sentiment,
+                    'confidence' => $analysis->confidence,
+                ],
+            ]);
         }
     }
 }

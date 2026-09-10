@@ -1,0 +1,22 @@
+{
+    "sourceFile": "front/src/App.vue",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1789044656225,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1789044662225,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -20,9 +20,9 @@\n           @click=\"sidebarOpen = !sidebarOpen\"\n         />\n         <span class=\"topbar-title\">Remarketing Console</span>\n         <div class=\"spacer\" />\n-        <Tag value=\"м\" severity=\"secondary\" rounded />\n+        <Tag value=\"v.\" severity=\"secondary\" rounded />\n       </header>\n \n       <main class=\"content\">\n         <RouterView v-slot=\"{ Component }\">\n"
+                }
+            ],
+            "date": 1789044656225,
+            "name": "Commit-0",
+            "content": "<script setup>\nimport { ref } from 'vue'\nimport AppSidebar from './components/AppSidebar.vue'\n\nconst sidebarOpen = ref(false)\n</script>\n\n<template>\n  <div class=\"shell\">\n    <AppSidebar :open=\"sidebarOpen\" @close=\"sidebarOpen = false\" />\n\n    <div class=\"main\">\n      <header class=\"topbar\">\n        <Button\n          class=\"only-mobile\"\n          icon=\"pi pi-bars\"\n          text\n          rounded\n          aria-label=\"Menu\"\n          @click=\"sidebarOpen = !sidebarOpen\"\n        />\n        <span class=\"topbar-title\">Remarketing Console</span>\n        <div class=\"spacer\" />\n        <Tag value=\"м\" severity=\"secondary\" rounded />\n      </header>\n\n      <main class=\"content\">\n        <RouterView v-slot=\"{ Component }\">\n          <component :is=\"Component\" />\n        </RouterView>\n      </main>\n    </div>\n\n    <Toast position=\"bottom-right\" />\n  </div>\n</template>\n\n<style scoped>\n.topbar {\n  display: flex;\n  align-items: center;\n  gap: 0.75rem;\n  padding: 0 1.25rem;\n  height: 56px;\n  border-bottom: 1px solid var(--surface-border);\n  background: var(--surface-card);\n  position: sticky;\n  top: 0;\n  z-index: 20;\n}\n.topbar-title {\n  font-weight: 700;\n}\n.only-mobile {\n  display: none !important;\n}\n@media (max-width: 900px) {\n  .only-mobile {\n    display: inline-flex !important;\n  }\n}\n</style>\n"
+        }
+    ]
+}

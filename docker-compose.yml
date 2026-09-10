@@ -8,14 +8,45 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      nats:
+        condition: service_healthy
     environment:
+      # DB_DATABASE is intentionally NOT set here: a container env var would
+      # shadow phpunit.xml and make the test suite run against the dev database.
+      # It comes from .env (reply_center) / phpunit.xml (reply_center_test).
       DB_CONNECTION: pgsql
       DB_HOST: db
       DB_PORT: 5432
-      DB_DATABASE: reply_center
       DB_USERNAME: app
       DB_PASSWORD: secret
+      NATS_HOST: nats
+      NATS_PORT: 4222
+      NATS_USER: app
+      NATS_PASS: app
     command: tail -f /dev/null
+
+  # Local test harness UI: http://localhost:8000
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      NATS_HOST: nats
+      NATS_USER: app
+      NATS_PASS: app
+      APP_URL: http://localhost:8000
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine
@@ -23,6 +54,8 @@ services:
       POSTGRES_DB: reply_center
       POSTGRES_USER: app
       POSTGRES_PASSWORD: secret
+    volumes:
+      - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "55432:5432"
     healthcheck:
@@ -30,3 +63,113 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Event bus
+  # ---------------------------------------------------------------------------
+  nats:
+    image: nats:2.10-alpine
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    volumes:
+      - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - nats-data:/data/jetstream
+    ports:
+      - "4222:4222"   # client
+      - "8222:8222"   # monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Long-running worker: drains the Postgres outbox into JetStream.
+  relay:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      NATS_HOST: nats
+      NATS_USER: app
+      NATS_PASS: app
+    command: ["php", "artisan", "outbox:relay"]
+    restart: unless-stopped
+
+  # Long-running worker: pulls reply.received off JetStream and dispatches the job.
+  consumer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      NATS_HOST: nats
+      NATS_USER: app
+      NATS_PASS: app
+    command: ["php", "artisan", "nats:consume-replies"]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Observability: NATS Surveyor -> Prometheus -> Grafana
+  # ---------------------------------------------------------------------------
+  nats-surveyor:
+    image: natsio/nats-surveyor:latest
+    command:
+      - "--servers=nats://sys:sys@nats:4222"
+      - "--port=7777"
+      - "--accounts"
+      - "--jsz=all"          # per-stream / per-consumer JetStream metrics
+    depends_on:
+      nats:
+        condition: service_healthy
+    ports:
+      - "7777:7777"   # /metrics
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - nats-surveyor
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./docker/grafana/dashboards-app:/var/lib/grafana/dashboards-app:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  nats-data:
+  prometheus-data:
+  grafana-data:

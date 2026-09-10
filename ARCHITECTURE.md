@@ -47,9 +47,14 @@ NATS, at-least-once delivery. Two consequences we live with:
 - **Ordering.** There is no global ordering guarantee. Events for the same
   client can arrive out of order, particularly around retries.
 
-Outbound events are written to an outbox table in the same transaction as the
-state change, and a relay publishes them. That part is in the CRM connector
-service, not here.
+Outbound events are written to an outbox table (`outbox_events`) in the same
+transaction as the state change, and the `outbox:relay` worker publishes them
+to JetStream. `ProcessInboundReplyJob` emits `events.reply.processed` this way.
+
+A runnable NATS + JetStream setup, the relay, the inbound consumer, and a
+NATS Surveyor / Prometheus / Grafana stack now live in this repo. See
+[docs/NATS.md](docs/NATS.md). None of it is needed for the test suite — that
+still runs entirely against Postgres.
 
 ## Deduplication
 

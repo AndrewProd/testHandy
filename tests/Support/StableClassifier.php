@@ -17,6 +17,15 @@ class StableClassifier implements SentimentClassifier
         return new self(json_encode(['sentiment' => $label], JSON_THROW_ON_ERROR));
     }
 
+    public static function analysis(string $sentiment, string $intent, float $confidence): self
+    {
+        return new self(json_encode([
+            'sentiment' => $sentiment,
+            'intent' => $intent,
+            'confidence' => $confidence,
+        ], JSON_THROW_ON_ERROR));
+    }
+
     public static function timeout(): self
     {
         return new self(timeout: true);

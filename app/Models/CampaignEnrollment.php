@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\DripCampaign\Models\DripCampaign;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -25,5 +26,10 @@ class CampaignEnrollment extends Model
     public function client()
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function campaign()
+    {
+        return $this->belongsTo(DripCampaign::class, 'campaign_id');
     }
 }

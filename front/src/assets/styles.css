@@ -1,0 +1,135 @@
+/* Layout only — visual components come from PrimeVue 3 (aura-light-blue theme). */
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+body {
+  background: var(--surface-ground, #f6f7f9);
+  color: var(--text-color, #1c2430);
+  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-size: 14px;
+  line-height: 1.55;
+}
+a {
+  color: var(--primary-color, #3b82f6);
+  text-decoration: none;
+}
+h1 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+h3 {
+  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
+  color: var(--text-color-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+code,
+pre,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+
+/* shell */
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.content {
+  padding: 1.5rem;
+  max-width: 1240px;
+  width: 100%;
+}
+
+/* grid helpers */
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+.grid.cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.grid.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.grid.cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.spacer {
+  flex: 1;
+}
+@media (max-width: 1000px) {
+  .grid.cols-3,
+  .grid.cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .grid.cols-2,
+  .grid.cols-3,
+  .grid.cols-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* form field helper: label + full-width control */
+.fld {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 13px;
+}
+.fld .p-dropdown,
+.fld .p-inputnumber,
+.fld .p-inputtext,
+.fld .p-inputtextarea,
+.fld textarea,
+.fld .p-multiselect {
+  width: 100%;
+}
+
+/* utilities */
+.muted {
+  color: var(--text-color-secondary, #6b7280);
+}
+.pre-json {
+  background: var(--surface-100, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--surface-border, #e2e5ea);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.table-wrap {
+  overflow-x: auto;
+}

@@ -1,0 +1,30 @@
+{
+    "sourceFile": "tests/TestCase.php",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 3,
+            "patches": [
+                {
+                    "date": 1789034462479,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1789034546703,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -7,6 +7,6 @@\n \n abstract class TestCase extends BaseTestCase\n {\n     use CreatesApplication;\n-  ..  use RefreshDatabase;\n+  // use RefreshDatabase;\n }\n"
+                },
+                {
+                    "date": 1789034760056,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -7,6 +7,6 @@\n \n abstract class TestCase extends BaseTestCase\n {\n     use CreatesApplication;\n-  // use RefreshDatabase;\n+   / use RefreshDatabase;\n }\n"
+                },
+                {
+                    "date": 1789034765270,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -7,6 +7,6 @@\n \n abstract class TestCase extends BaseTestCase\n {\n     use CreatesApplication;\n-   / use RefreshDatabase;\n+   // use RefreshDatabase;\n }\n"
+                }
+            ],
+            "date": 1789034462479,
+            "name": "Commit-0",
+            "content": "<?php\n\nnamespace Tests;\n\nuse Illuminate\\Foundation\\Testing\\RefreshDatabase;\nuse Illuminate\\Foundation\\Testing\\TestCase as BaseTestCase;\n\nabstract class TestCase extends BaseTestCase\n{\n    use CreatesApplication;\n  ..  use RefreshDatabase;\n}\n"
+        }
+    ]
+}
